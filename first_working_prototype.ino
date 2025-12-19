@@ -35,8 +35,8 @@ Servo scanServo;
 
 
 // Other IO
-const int buzPin = 4;
-const int ledPin = 8;
+const int buzPin = 12;
+const int ledPin = 13;
 
 const int irFPin = A2;
 const int irBPin = A3;
