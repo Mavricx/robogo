@@ -62,7 +62,7 @@ const int ledPin = 13;
 const int irFPin = A2;
 const int irBPin = A3;
 
-int valSpeed = 50;
+int valSpeed = 150;
 
 void lcdPrintClear(uint8_t col, uint8_t row, const char *text);
 void lcdPrintClearNum(uint8_t col, uint8_t row, const char *label, int value);
@@ -94,9 +94,7 @@ static void pivotRightMs(unsigned long ms)
     stopCar();
 }
 
-void buzzerPlay(BuzzerAction action, bool state)
-{
-
+void buzzerPlay(BuzzerAction action, bool state){
     if (state == BUZ_OFF)
     {
         digitalWrite(buzPin, LOW);
@@ -218,7 +216,7 @@ void showStartupScreens()
     lcdPrintClear(0, 1, "  Priyanshu   ");
     delay(700);
 
-    lcdPrintClear(0, 1, "  Raja Swain  ");
+    lcdPrintClear(0, 1, "  Hridesh ");
     delay(700);
 
     lcdPrintClear(0, 1, "   Roshan   ");
@@ -236,12 +234,11 @@ void showStartupScreens()
 
     lcdPrintClear(0, 0, "BT Ready to Pair");
     lcdPrintClear(0, 1, "Waiting...");
-    delay(1000);
+    delay(10000);
     lcd.clear(); // clean screen before loop starts
 }
 
-void handleCommand(char command)
-{
+void handleCommand(char command){
     btConnected = true; // Bluetooth is active once we receive anything
 
     switch (command)
@@ -391,7 +388,6 @@ long scanDirection(int angle)
     delay(600); // was 1000; reduce a bit for faster decisions (tune if needed)
     return getDistance();
 }
-
 // NEW: Auto avoid routine that *temporarily* takes over, then returns control to BT.
 void autoAvoidObstacle_BT()
 {
@@ -490,8 +486,8 @@ void autoAvoidObstacle_BT()
     lcdPrintClear(0, 1, "Send Command");
 }
 
-void loop()
-{
+void loop(){
+
     // Always listen for bluetooth commands
     if (btSerial.available())
     {
@@ -512,5 +508,10 @@ void loop()
     if (motionState == FORWARDING && digitalRead(irFPin) == LOW)
     {
         autoAvoidObstacle_BT(); // takes over, then returns control to BT
+    }
+    // Safety: if moving backward and rear IR triggers, stop immediately
+    if(motionState==BACKWARDING && digitalRead(irBPin)==LOW){
+        stopCar();
+        motionState=STOPPED;
     }
 }
