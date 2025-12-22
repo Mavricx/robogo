@@ -37,9 +37,6 @@ AF_DCMotor MotorBR(3);
 
 bool btConnected = false;
 
-// Prevent auto-avoid re-entry (reduces rapid repeated load spikes)
-bool autoAvoidActive = false;
-
 // NEW: track current motion so we only auto-avoid when moving forward
 enum MotionState
 {
@@ -61,15 +58,6 @@ Servo scanServo;
 // Other IO
 const int buzPin = 12;
 const int ledPin = 13;
-
-static void beepBlinkShort(uint16_t onMs = 120)
-{
-    digitalWrite(buzPin, HIGH);
-    digitalWrite(ledPin, HIGH);
-    delay(onMs);
-    digitalWrite(buzPin, LOW);
-    digitalWrite(ledPin, LOW);
-}
 
 const int irFPin = A3;
 const int irBPin = A2;
@@ -108,8 +96,6 @@ static void pivotRightMs(unsigned long ms)
 
 void buzzerPlay(BuzzerAction action, bool state)
 {
-    (void)action; // All actions are a simple short beep + blink
-
     if (state == BUZ_OFF)
     {
         digitalWrite(buzPin, LOW);
@@ -117,7 +103,69 @@ void buzzerPlay(BuzzerAction action, bool state)
         return;
     }
 
-    beepBlinkShort();
+    switch (action)
+    {
+
+    case BUZ_BACKWARD:
+        // 🚗 "Beep... Beep..." (reverse truck style)
+        for (int i = 0; i < 2; i++)
+        {
+            digitalWrite(buzPin, HIGH);
+            digitalWrite(ledPin, HIGH);
+            delay(300);
+            digitalWrite(buzPin, LOW);
+            digitalWrite(ledPin, LOW);
+            delay(200);
+        }
+        break;
+
+    case BUZ_RIGHT:
+        // 👉 "pip–pip" (short + playful)
+        digitalWrite(buzPin, HIGH);
+        digitalWrite(ledPin, HIGH);
+        delay(100);
+        digitalWrite(buzPin, LOW);
+        digitalWrite(ledPin, LOW);
+        delay(80);
+        digitalWrite(buzPin, HIGH);
+        digitalWrite(ledPin, HIGH);
+        delay(180);
+        digitalWrite(buzPin, LOW);
+        digitalWrite(ledPin, LOW);
+        break;
+
+    case BUZ_LEFT:
+        // 👈 "pi–pi–pi" (quick triple)
+        for (int i = 0; i < 3; i++)
+        {
+            digitalWrite(buzPin, HIGH);
+            digitalWrite(ledPin, HIGH);
+            delay(90);
+            digitalWrite(buzPin, LOW);
+            digitalWrite(ledPin, LOW);
+            delay(60);
+        }
+        break;
+
+    case BUZ_OBJECT:
+        // 🚨 "wee-woo wee-woo" (emergency alert)
+        for (int i = 0; i < 2; i++)
+        {
+            digitalWrite(buzPin, HIGH);
+            digitalWrite(ledPin, HIGH);
+            delay(150);
+            digitalWrite(buzPin, LOW);
+            digitalWrite(ledPin, LOW);
+            delay(60);
+            digitalWrite(buzPin, HIGH);
+            digitalWrite(ledPin, HIGH);
+            delay(300);
+            digitalWrite(buzPin, LOW);
+            digitalWrite(ledPin, LOW);
+            delay(100);
+        }
+        break;
+    }
 }
 
 void setup()
@@ -228,7 +276,9 @@ void handleCommand(char command)
         break;
 
     case 'Y':
-        beepBlinkShort();
+        digitalWrite(buzPin, HIGH);
+        delay(150);
+        digitalWrite(buzPin, LOW);
         break;
 
     case 'U':
@@ -358,18 +408,12 @@ long scanDirection(int angle)
 // NEW: Auto avoid routine that *temporarily* takes over, then returns control to BT.
 void autoAvoidObstacle_BT()
 {
-    if (autoAvoidActive)
-        return;
-    autoAvoidActive = true;
-
     // Take over
     stopCar();
     motionState = STOPPED;
 
-    // Obstacle detected alert (serialize loads)
-    delay(50);
+    // Obstacle detected alert (buzzer + LED handled inside buzzerPlay)
     buzzerPlay(BUZ_OBJECT, BUZ_ON);
-    delay(80);
 
     lcdPrintClear(0, 0, "Obstacle!");
     lcdPrintClear(0, 1, "Scanning...");
@@ -399,10 +443,7 @@ void autoAvoidObstacle_BT()
     {
         // All sides blocked -> reverse a bit, then rescan and turn
         lcdPrintClear(0, 0, "Auto Reverse");
-        stopCar();
-        delay(50);
         buzzerPlay(BUZ_BACKWARD, BUZ_ON);
-        delay(80);
         moveBackward();
 
         unsigned long start = millis();
@@ -412,10 +453,8 @@ void autoAvoidObstacle_BT()
             if (digitalRead(irBPin) == LOW)
             {
                 stopCar();
-                delay(50);
                 lcdPrintClear(0, 1, "Back Blocked!");
                 buzzerPlay(BUZ_OBJECT, BUZ_ON);
-                delay(80);
                 break;
             }
 
@@ -427,7 +466,6 @@ void autoAvoidObstacle_BT()
                 {
                     handleCommand(cmd);
                     buzzerPlay(BUZ_OBJECT, BUZ_OFF);
-                    autoAvoidActive = false;
                     return; // give control back immediately
                 }
             }
@@ -463,14 +501,10 @@ void autoAvoidObstacle_BT()
     // Give control back to BT commands (no need to press F again)
     lcdPrintClear(0, 0, "BT Control Ready");
     lcdPrintClear(0, 1, "Send Command");
-
-    autoAvoidActive = false;
 }
 
 void loop()
 {
-
-    static unsigned long lastAvoid = 0;
 
     // Always listen for bluetooth commands
     if (btSerial.available())
@@ -489,21 +523,13 @@ void loop()
 
     // If BT is connected, allow movement.
     // Automatic obstacle avoidance takes over ONLY if moving forward and front IR triggers.
-    if (motionState == FORWARDING &&
-        digitalRead(irFPin) == LOW &&
-        !autoAvoidActive &&
-        (millis() - lastAvoid > 800))
+    if (motionState == FORWARDING && digitalRead(irFPin) == LOW)
     {
-        lastAvoid = millis();
         autoAvoidObstacle_BT(); // takes over, then returns control to BT
     }
     // Safety: if moving backward and rear IR triggers, stop immediately
-    if (motionState == BACKWARDING &&
-        digitalRead(irBPin) == LOW &&
-        !autoAvoidActive &&
-        (millis() - lastAvoid > 800))
+    if (motionState == BACKWARDING && digitalRead(irBPin) == LOW)
     {
-        lastAvoid = millis();
         stopCar();
         motionState = STOPPED;
         autoAvoidObstacle_BT(); // take over to avoid obstacle in front

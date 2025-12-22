@@ -12,17 +12,6 @@
 #define OBSTACLE_DISTANCE 20 // cm
 #define BACK_TIME 800        // ms
 
-enum BuzzerAction
-{
-    BUZ_BACKWARD,
-    BUZ_RIGHT,
-    BUZ_LEFT,
-    BUZ_OBJECT
-};
-
-#define BUZ_ON true
-#define BUZ_OFF false
-
 // NEW: tune turn timing
 #define TURN_TIME 600    // ms (how long to pivot left/right)
 #define RESCAN_PAUSE 250 // ms (pause after reverse before scanning)
@@ -36,9 +25,6 @@ AF_DCMotor MotorBL(2);
 AF_DCMotor MotorBR(3);
 
 bool btConnected = false;
-
-// Prevent auto-avoid re-entry (reduces rapid repeated load spikes)
-bool autoAvoidActive = false;
 
 // NEW: track current motion so we only auto-avoid when moving forward
 enum MotionState
@@ -59,15 +45,12 @@ SoftwareSerial btSerial(BT_RX_PIN, BT_TX_PIN); // RX, TX
 Servo scanServo;
 
 // Other IO
-const int buzPin = 12;
 const int ledPin = 13;
 
-static void beepBlinkShort(uint16_t onMs = 120)
+static void ledBlinkShort(uint16_t onMs = 120)
 {
-    digitalWrite(buzPin, HIGH);
     digitalWrite(ledPin, HIGH);
     delay(onMs);
-    digitalWrite(buzPin, LOW);
     digitalWrite(ledPin, LOW);
 }
 
@@ -75,6 +58,40 @@ const int irFPin = A3;
 const int irBPin = A2;
 
 int valSpeed = 100;
+
+// Soft-start / soft-stop tuning (reduces inrush current -> fewer brownout resets)
+// Keep these small/fast so behavior stays the same.
+#define SOFT_RAMP_STEP 12    // PWM increment per step (0-255)
+#define SOFT_RAMP_DELAY_MS 5 // delay per step
+
+static int appliedSpeed = 0; // last PWM applied to motor shield
+
+static void applyMotorSpeedAll(uint8_t spd)
+{
+    MotorFL.setSpeed(spd);
+    MotorFR.setSpeed(spd);
+    MotorBL.setSpeed(spd);
+    MotorBR.setSpeed(spd);
+}
+
+static void rampMotorSpeedTo(int target)
+{
+    target = constrain(target, 0, 255);
+    int s = appliedSpeed;
+    if (s == target)
+        return;
+
+    const int dir = (target > s) ? 1 : -1;
+    while (s != target)
+    {
+        s += dir * SOFT_RAMP_STEP;
+        if ((dir > 0 && s > target) || (dir < 0 && s < target))
+            s = target;
+        applyMotorSpeedAll((uint8_t)s);
+        delay(SOFT_RAMP_DELAY_MS);
+    }
+    appliedSpeed = s;
+}
 
 void lcdPrintClear(uint8_t col, uint8_t row, const char *text);
 void lcdPrintClearNum(uint8_t col, uint8_t row, const char *label, int value);
@@ -106,20 +123,6 @@ static void pivotRightMs(unsigned long ms)
     stopCar();
 }
 
-void buzzerPlay(BuzzerAction action, bool state)
-{
-    (void)action; // All actions are a simple short beep + blink
-
-    if (state == BUZ_OFF)
-    {
-        digitalWrite(buzPin, LOW);
-        digitalWrite(ledPin, LOW);
-        return;
-    }
-
-    beepBlinkShort();
-}
-
 void setup()
 {
     Serial.begin(9600);
@@ -133,7 +136,6 @@ void setup()
     pinMode(TRIG_PIN, OUTPUT);
     pinMode(ECHO_PIN, INPUT);
 
-    pinMode(buzPin, OUTPUT);
     pinMode(ledPin, OUTPUT);
 
     pinMode(irFPin, INPUT);
@@ -142,7 +144,7 @@ void setup()
     scanServo.attach(SERVO_PIN);
 
     digitalWrite(ledPin, HIGH);
-    buzzerPlay(BUZ_OBJECT, BUZ_ON);
+    ledBlinkShort();
     digitalWrite(ledPin, LOW);
 
     SetSpeed(valSpeed);
@@ -228,7 +230,7 @@ void handleCommand(char command)
         break;
 
     case 'Y':
-        beepBlinkShort();
+        ledBlinkShort();
         break;
 
     case 'U':
@@ -279,53 +281,58 @@ void safeStopAndDelay(uint16_t ms = 40)
 void SetSpeed(int val)
 {
     valSpeed = val;
-    MotorFL.setSpeed(val);
-    MotorFR.setSpeed(val);
-    MotorBL.setSpeed(val);
-    MotorBR.setSpeed(val);
+    // Ramp to new speed to avoid sudden current spikes (esp. when changing from low->high).
+    rampMotorSpeedTo(valSpeed);
 }
 
 void moveForward()
 {
     safeStopAndDelay();
-    SetSpeed(valSpeed);
+    rampMotorSpeedTo(0);
     MotorFL.run(FORWARD);
     MotorFR.run(FORWARD);
     MotorBL.run(FORWARD);
     MotorBR.run(FORWARD);
+    rampMotorSpeedTo(valSpeed);
 }
 
 void moveBackward()
 {
     safeStopAndDelay();
-    SetSpeed(valSpeed);
+    rampMotorSpeedTo(0);
     MotorFL.run(BACKWARD);
     MotorFR.run(BACKWARD);
     MotorBL.run(BACKWARD);
     MotorBR.run(BACKWARD);
+    rampMotorSpeedTo(valSpeed);
 }
 
 void moveRight()
 {
     safeStopAndDelay();
-    SetSpeed(valSpeed);
+    rampMotorSpeedTo(0);
     MotorFL.run(FORWARD);
     MotorFR.run(BACKWARD);
     MotorBL.run(FORWARD);
     MotorBR.run(BACKWARD);
+    rampMotorSpeedTo(valSpeed);
 }
 
 void moveLeft()
 {
     safeStopAndDelay();
-    SetSpeed(valSpeed);
+    rampMotorSpeedTo(0);
     MotorFL.run(BACKWARD);
     MotorFR.run(FORWARD);
     MotorBL.run(BACKWARD);
     MotorBR.run(FORWARD);
+    rampMotorSpeedTo(valSpeed);
 }
 void stopCar()
 {
+    // Ensure PWM is at 0 so the next start ramps up cleanly.
+    applyMotorSpeedAll(0);
+    appliedSpeed = 0;
     MotorFL.run(RELEASE);
     MotorFR.run(RELEASE);
     MotorBL.run(RELEASE);
@@ -348,35 +355,32 @@ long getDistance()
 
 long scanDirection(int angle)
 {
-    stopCar(); // ensure motors are OFF
-    delay(60); // settle power
+    stopCar();  // ensure motors are OFF
+    delay(400); // settle power
     scanServo.write(angle);
-    delay(300); // reduced delay
+    delay(500); // reduced delay
     return getDistance();
 }
 
 // NEW: Auto avoid routine that *temporarily* takes over, then returns control to BT.
 void autoAvoidObstacle_BT()
 {
-    if (autoAvoidActive)
-        return;
-    autoAvoidActive = true;
-
     // Take over
     stopCar();
     motionState = STOPPED;
 
-    // Obstacle detected alert (serialize loads)
-    delay(50);
-    buzzerPlay(BUZ_OBJECT, BUZ_ON);
-    delay(80);
+    // Obstacle detected alert (LED only)
+    ledBlinkShort();
 
-    lcdPrintClear(0, 0, "Obstacle!");
+    lcdPrintClear(0, 0, "Obstacle Ahead !");
     lcdPrintClear(0, 1, "Scanning...");
 
     long leftDist = scanDirection(150);
+    delay(500);
     long rightDist = scanDirection(30);
+    delay(500);
     long centerDist = scanDirection(90);
+    delay(500);
     (void)centerDist; // centerDist is optional; kept for future logic / debug
 
     // If we have space on either side -> pivot to the side with more space
@@ -385,13 +389,13 @@ void autoAvoidObstacle_BT()
         if (leftDist >= rightDist)
         {
             lcdPrintClear(0, 0, "Auto Left");
-            buzzerPlay(BUZ_LEFT, BUZ_ON);
+            ledBlinkShort();
             pivotLeftMs(TURN_TIME);
         }
         else
         {
             lcdPrintClear(0, 0, "Auto Right");
-            buzzerPlay(BUZ_RIGHT, BUZ_ON);
+            ledBlinkShort();
             pivotRightMs(TURN_TIME);
         }
     }
@@ -399,10 +403,7 @@ void autoAvoidObstacle_BT()
     {
         // All sides blocked -> reverse a bit, then rescan and turn
         lcdPrintClear(0, 0, "Auto Reverse");
-        stopCar();
-        delay(50);
-        buzzerPlay(BUZ_BACKWARD, BUZ_ON);
-        delay(80);
+        ledBlinkShort();
         moveBackward();
 
         unsigned long start = millis();
@@ -412,10 +413,8 @@ void autoAvoidObstacle_BT()
             if (digitalRead(irBPin) == LOW)
             {
                 stopCar();
-                delay(50);
                 lcdPrintClear(0, 1, "Back Blocked!");
-                buzzerPlay(BUZ_OBJECT, BUZ_ON);
-                delay(80);
+                ledBlinkShort();
                 break;
             }
 
@@ -426,8 +425,7 @@ void autoAvoidObstacle_BT()
                 if (cmd == 'S')
                 {
                     handleCommand(cmd);
-                    buzzerPlay(BUZ_OBJECT, BUZ_OFF);
-                    autoAvoidActive = false;
+                    digitalWrite(ledPin, LOW);
                     return; // give control back immediately
                 }
             }
@@ -443,13 +441,13 @@ void autoAvoidObstacle_BT()
         if (leftDist >= rightDist)
         {
             lcdPrintClear(0, 0, "Auto Left");
-            buzzerPlay(BUZ_LEFT, BUZ_ON);
+            ledBlinkShort();
             pivotLeftMs(TURN_TIME);
         }
         else
         {
             lcdPrintClear(0, 0, "Auto Right");
-            buzzerPlay(BUZ_RIGHT, BUZ_ON);
+            ledBlinkShort();
             pivotRightMs(TURN_TIME);
         }
     }
@@ -457,20 +455,16 @@ void autoAvoidObstacle_BT()
     stopCar();
     motionState = STOPPED;
 
-    // Ensure buzzer + LED are off (buzzerPlay handles both)
-    buzzerPlay(BUZ_OBJECT, BUZ_OFF);
+    // Ensure LED is off
+    digitalWrite(ledPin, LOW);
 
     // Give control back to BT commands (no need to press F again)
     lcdPrintClear(0, 0, "BT Control Ready");
     lcdPrintClear(0, 1, "Send Command");
-
-    autoAvoidActive = false;
 }
 
 void loop()
 {
-
-    static unsigned long lastAvoid = 0;
 
     // Always listen for bluetooth commands
     if (btSerial.available())
@@ -489,21 +483,13 @@ void loop()
 
     // If BT is connected, allow movement.
     // Automatic obstacle avoidance takes over ONLY if moving forward and front IR triggers.
-    if (motionState == FORWARDING &&
-        digitalRead(irFPin) == LOW &&
-        !autoAvoidActive &&
-        (millis() - lastAvoid > 800))
+    if (motionState == FORWARDING && digitalRead(irFPin) == LOW)
     {
-        lastAvoid = millis();
         autoAvoidObstacle_BT(); // takes over, then returns control to BT
     }
     // Safety: if moving backward and rear IR triggers, stop immediately
-    if (motionState == BACKWARDING &&
-        digitalRead(irBPin) == LOW &&
-        !autoAvoidActive &&
-        (millis() - lastAvoid > 800))
+    if (motionState == BACKWARDING && digitalRead(irBPin) == LOW)
     {
-        lastAvoid = millis();
         stopCar();
         motionState = STOPPED;
         autoAvoidObstacle_BT(); // take over to avoid obstacle in front

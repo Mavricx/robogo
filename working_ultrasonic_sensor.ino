@@ -32,7 +32,8 @@ int valSpeed = 200;
 const int STOP_DISTANCE = 20; // cm
 
 // ---------------- Setup ----------------
-void setup() {
+void setup()
+{
   Serial.begin(9600);
   btSerial.begin(9600);
 
@@ -52,27 +53,33 @@ void setup() {
 }
 
 // ---------------- Main Loop ----------------
-void loop() {
+void loop()
+{
   readDistance();
   displayDistance();
 
   // Auto stop if obstacle is close
-  if (distance <= STOP_DISTANCE && distance > 0) {
+  if (distance <= STOP_DISTANCE && distance > 0)
+  {
     stopMotors();
     digitalWrite(ledPin, HIGH);
-  } else {
+  }
+  else
+  {
     digitalWrite(ledPin, LOW);
   }
 
   // Bluetooth commands
-  if (btSerial.available()) {
+  if (btSerial.available())
+  {
     char c = btSerial.read();
     handleCommand(c);
   }
 }
 
 // ---------------- Ultrasonic Functions ----------------
-void readDistance() {
+void readDistance()
+{
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
   digitalWrite(TRIG_PIN, HIGH);
@@ -87,14 +94,16 @@ void readDistance() {
   Serial.println(" cm");
 }
 
-void displayDistance() {
+void displayDistance()
+{
   lcd.setCursor(0, 1);
   lcd.print(distance);
   lcd.print(" cm     ");
 }
 
 // ---------------- Motor Control ----------------
-void stopMotors() {
+void stopMotors()
+{
   MotorFL.run(RELEASE);
   MotorFR.run(RELEASE);
   MotorBL.run(RELEASE);
@@ -102,67 +111,83 @@ void stopMotors() {
 }
 
 // ---------------- Command Handler ----------------
-void handleCommand(char command) {
+void handleCommand(char command)
+{
 
   // Block forward motion if obstacle detected
-  if (command == 'F' && distance <= STOP_DISTANCE && distance > 0) {
+  if (command == 'F' && distance <= STOP_DISTANCE && distance > 0)
+  {
     stopMotors();
     return;
   }
 
-  switch (command) {
-    case 'F':
-      SetSpeed(valSpeed);
-      MotorFL.run(FORWARD);
-      MotorFR.run(FORWARD);
-      MotorBL.run(FORWARD);
-      MotorBR.run(FORWARD);
-      break;
+  switch (command)
+  {
+  case 'F':
+    SetSpeed(valSpeed);
+    MotorFL.run(FORWARD);
+    MotorFR.run(FORWARD);
+    MotorBL.run(FORWARD);
+    MotorBR.run(FORWARD);
+    break;
 
-    case 'B':
-      SetSpeed(valSpeed);
-      MotorFL.run(BACKWARD);
-      MotorFR.run(BACKWARD);
-      MotorBL.run(BACKWARD);
-      MotorBR.run(BACKWARD);
-      break;
+  case 'B':
+    SetSpeed(valSpeed);
+    MotorFL.run(BACKWARD);
+    MotorFR.run(BACKWARD);
+    MotorBL.run(BACKWARD);
+    MotorBR.run(BACKWARD);
+    break;
 
-    case 'L':
-      MotorFL.run(BACKWARD);
-      MotorFR.run(FORWARD);
-      MotorBL.run(BACKWARD);
-      MotorBR.run(FORWARD);
-      break;
+  case 'L':
+    MotorFL.run(BACKWARD);
+    MotorFR.run(FORWARD);
+    MotorBL.run(BACKWARD);
+    MotorBR.run(FORWARD);
+    break;
 
-    case 'R':
-      MotorFL.run(FORWARD);
-      MotorFR.run(BACKWARD);
-      MotorBL.run(FORWARD);
-      MotorBR.run(BACKWARD);
-      break;
+  case 'R':
+    MotorFL.run(FORWARD);
+    MotorFR.run(BACKWARD);
+    MotorBL.run(FORWARD);
+    MotorBR.run(BACKWARD);
+    break;
 
-    case 'S':
-      stopMotors();
-      break;
+  case 'S':
+    stopMotors();
+    break;
 
-    case 'Y':
-      digitalWrite(buzPin, HIGH);
-      delay(200);
-      digitalWrite(buzPin, LOW);
-      break;
+  case 'Y':
+    digitalWrite(buzPin, HIGH);
+    delay(120);
+    digitalWrite(buzPin, LOW);
+    break;
 
-    case 'U': digitalWrite(ledPin, HIGH); break;
-    case 'u': digitalWrite(ledPin, LOW); break;
+  case 'U':
+    digitalWrite(ledPin, HIGH);
+    break;
+  case 'u':
+    digitalWrite(ledPin, LOW);
+    break;
 
-    case '1': SetSpeed(65); break;
-    case '2': SetSpeed(130); break;
-    case '3': SetSpeed(195); break;
-    case '4': SetSpeed(255); break;
+  case '1':
+    SetSpeed(65);
+    break;
+  case '2':
+    SetSpeed(130);
+    break;
+  case '3':
+    SetSpeed(195);
+    break;
+  case '4':
+    SetSpeed(255);
+    break;
   }
 }
 
 // ---------------- Speed Helper ----------------
-void SetSpeed(int val) {
+void SetSpeed(int val)
+{
   valSpeed = val;
   MotorFL.setSpeed(val);
   MotorFR.setSpeed(val);

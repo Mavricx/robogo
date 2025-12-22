@@ -23,16 +23,12 @@ AF_DCMotor MotorBR(3);
 bool btConnected = false;
 bool forwardCommandActive = false;
 
-
-
 // Bluetooth pins using A4 / A5
 const uint8_t BT_RX_PIN = A0; // HC-05 TX -> Arduino A4 (RX)
 const uint8_t BT_TX_PIN = A1; // Arduino A5 (TX) -> HC-05 RX (via voltage divider)
 
 SoftwareSerial btSerial(BT_RX_PIN, BT_TX_PIN); // RX, TX
 Servo scanServo;
-
-
 
 // Other IO
 const int buzPin = 12;
@@ -76,7 +72,7 @@ void setup()
 }
 void handleCommand(char command)
 {
-    btConnected = true;   // Bluetooth is active
+    btConnected = true; // Bluetooth is active
 
     switch (command)
     {
@@ -101,7 +97,7 @@ void handleCommand(char command)
 
     case 'Y':
         digitalWrite(buzPin, HIGH);
-        delay(150);
+        delay(120);
         digitalWrite(buzPin, LOW);
         break;
 
@@ -113,14 +109,20 @@ void handleCommand(char command)
         digitalWrite(ledPin, LOW);
         break;
 
-    case '1': SetSpeed(65); break;
-    case '2': SetSpeed(130); break;
-    case '3': SetSpeed(195); break;
-    case '4': SetSpeed(255); break;
+    case '1':
+        SetSpeed(65);
+        break;
+    case '2':
+        SetSpeed(130);
+        break;
+    case '3':
+        SetSpeed(195);
+        break;
+    case '4':
+        SetSpeed(255);
+        break;
     }
 }
-
-
 
 // function to print in lcd
 void lcdPrintClear(uint8_t col, uint8_t row, const char *text)
@@ -221,38 +223,41 @@ long scanDirection(int angle)
     return getDistance();
 }
 
-//half logic without bluetooth integration--currently redundant
-void autoAvoidObstacle(){
+// half logic without bluetooth integration--currently redundant
+void autoAvoidObstacle()
+{
     stopCar();
     digitalWrite(ledPin, HIGH);
 
     // Alert
     digitalWrite(buzPin, HIGH);
-    delay(200);
+    delay(120);
     digitalWrite(buzPin, LOW);
 
-    lcdPrintClear(0,1,"Scanning...");
+    lcdPrintClear(0, 1, "Scanning...");
 
-    long leftDist  = scanDirection(150);
+    long leftDist = scanDirection(150);
     long rightDist = scanDirection(30);
     long centerDist = scanDirection(90);
 
-    if (leftDist > OBSTACLE_DISTANCE || rightDist > OBSTACLE_DISTANCE){
+    if (leftDist > OBSTACLE_DISTANCE || rightDist > OBSTACLE_DISTANCE)
+    {
         if (leftDist >= rightDist)
         {
-            lcdPrintClear(0,0,"Auto Left");
+            lcdPrintClear(0, 0, "Auto Left");
             moveLeft();
         }
         else
         {
-            lcdPrintClear(0,0,"Auto Right");
+            lcdPrintClear(0, 0, "Auto Right");
             moveRight();
         }
         delay(600);
     }
-    else{
+    else
+    {
         // All sides blocked move back a little and scanning again.
-        lcdPrintClear(0,0,"Backing...");
+        lcdPrintClear(0, 0, "Backing...");
         moveBackward();
         delay(800);
 
@@ -260,7 +265,7 @@ void autoAvoidObstacle(){
         delay(300);
 
         // Re-scan after backing
-        leftDist  = scanDirection(150);
+        leftDist = scanDirection(150);
         rightDist = scanDirection(30);
 
         if (leftDist >= rightDist)
@@ -275,21 +280,24 @@ void autoAvoidObstacle(){
     digitalWrite(ledPin, LOW);
 }
 
-
-void loop(){
+void loop()
+{
     // Listen for bluetooth commands
-    if (btSerial.available()) {
+    if (btSerial.available())
+    {
         char cmd = btSerial.read();
         handleCommand(cmd);
     }
 
     //  If BT not connected or forward not commanded → do nothing
-    if (!btConnected || !forwardCommandActive) {
+    if (!btConnected || !forwardCommandActive)
+    {
         return;
     }
 
     //  FRONT OBSTACLE CHECK
-    if (digitalRead(irFPin) == LOW) {
+    if (digitalRead(irFPin) == LOW)
+    {
         stopCar();
         forwardCommandActive = false;
 
@@ -298,36 +306,43 @@ void loop(){
 
         // Alert beep
         digitalWrite(buzPin, HIGH);
-        delay(200);
+        delay(120);
         digitalWrite(buzPin, LOW);
 
         // Scan
         lcdPrintClear(0, 1, "Scanning...");
-        long leftDist   = scanDirection(150);
+        long leftDist = scanDirection(150);
         long centerDist = scanDirection(90);
-        long rightDist  = scanDirection(30);
+        long rightDist = scanDirection(30);
 
         // Decision
-        if (leftDist > OBSTACLE_DISTANCE || rightDist > OBSTACLE_DISTANCE) {
+        if (leftDist > OBSTACLE_DISTANCE || rightDist > OBSTACLE_DISTANCE)
+        {
 
-            if (leftDist >= rightDist) {
+            if (leftDist >= rightDist)
+            {
                 lcdPrintClear(0, 0, "Auto Left");
                 moveLeft();
-            } else {
+            }
+            else
+            {
                 lcdPrintClear(0, 0, "Auto Right");
                 moveRight();
             }
 
             delay(600);
         }
-        else {
+        else
+        {
             // 🔙 Reverse
             lcdPrintClear(0, 0, "Auto Reverse");
             moveBackward();
 
             unsigned long start = millis();
-            while (millis() - start < BACK_TIME) {
-                if (digitalRead(irBPin) == LOW) {
+            while (millis() - start < BACK_TIME)
+            {
+                if (digitalRead(irBPin) == LOW)
+                {
                     stopCar();
                     lcdPrintClear(0, 1, "Back Blocked!");
                     break;
@@ -340,4 +355,3 @@ void loop(){
         lcdPrintClear(0, 1, "Press F Again");
     }
 }
-

@@ -37,9 +37,6 @@ AF_DCMotor MotorBR(3);
 
 bool btConnected = false;
 
-// Prevent auto-avoid re-entry (reduces rapid repeated load spikes)
-bool autoAvoidActive = false;
-
 // NEW: track current motion so we only auto-avoid when moving forward
 enum MotionState
 {
@@ -358,18 +355,12 @@ long scanDirection(int angle)
 // NEW: Auto avoid routine that *temporarily* takes over, then returns control to BT.
 void autoAvoidObstacle_BT()
 {
-    if (autoAvoidActive)
-        return;
-    autoAvoidActive = true;
-
     // Take over
     stopCar();
     motionState = STOPPED;
 
-    // Obstacle detected alert (serialize loads)
-    delay(50);
+    // Obstacle detected alert (buzzer + LED handled inside buzzerPlay)
     buzzerPlay(BUZ_OBJECT, BUZ_ON);
-    delay(80);
 
     lcdPrintClear(0, 0, "Obstacle!");
     lcdPrintClear(0, 1, "Scanning...");
@@ -399,10 +390,7 @@ void autoAvoidObstacle_BT()
     {
         // All sides blocked -> reverse a bit, then rescan and turn
         lcdPrintClear(0, 0, "Auto Reverse");
-        stopCar();
-        delay(50);
         buzzerPlay(BUZ_BACKWARD, BUZ_ON);
-        delay(80);
         moveBackward();
 
         unsigned long start = millis();
@@ -412,10 +400,8 @@ void autoAvoidObstacle_BT()
             if (digitalRead(irBPin) == LOW)
             {
                 stopCar();
-                delay(50);
                 lcdPrintClear(0, 1, "Back Blocked!");
                 buzzerPlay(BUZ_OBJECT, BUZ_ON);
-                delay(80);
                 break;
             }
 
@@ -427,7 +413,6 @@ void autoAvoidObstacle_BT()
                 {
                     handleCommand(cmd);
                     buzzerPlay(BUZ_OBJECT, BUZ_OFF);
-                    autoAvoidActive = false;
                     return; // give control back immediately
                 }
             }
@@ -463,14 +448,10 @@ void autoAvoidObstacle_BT()
     // Give control back to BT commands (no need to press F again)
     lcdPrintClear(0, 0, "BT Control Ready");
     lcdPrintClear(0, 1, "Send Command");
-
-    autoAvoidActive = false;
 }
 
 void loop()
 {
-
-    static unsigned long lastAvoid = 0;
 
     // Always listen for bluetooth commands
     if (btSerial.available())
@@ -489,21 +470,13 @@ void loop()
 
     // If BT is connected, allow movement.
     // Automatic obstacle avoidance takes over ONLY if moving forward and front IR triggers.
-    if (motionState == FORWARDING &&
-        digitalRead(irFPin) == LOW &&
-        !autoAvoidActive &&
-        (millis() - lastAvoid > 800))
+    if (motionState == FORWARDING && digitalRead(irFPin) == LOW)
     {
-        lastAvoid = millis();
         autoAvoidObstacle_BT(); // takes over, then returns control to BT
     }
     // Safety: if moving backward and rear IR triggers, stop immediately
-    if (motionState == BACKWARDING &&
-        digitalRead(irBPin) == LOW &&
-        !autoAvoidActive &&
-        (millis() - lastAvoid > 800))
+    if (motionState == BACKWARDING && digitalRead(irBPin) == LOW)
     {
-        lastAvoid = millis();
         stopCar();
         motionState = STOPPED;
         autoAvoidObstacle_BT(); // take over to avoid obstacle in front
